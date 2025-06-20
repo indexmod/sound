@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Deep Drone Visual</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      width: 100%;
+      height: 100%;
+      font-family: Verdana, sans-serif;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #infoBox {
+      position: fixed;
+      bottom: 100px;
+      right: 20px;
+      background-color: transparent;
+      border: 1px solid blue;
+      color: blue;
+      font-size: 15px;
+      font-family: Verdana, sans-serif;
+      padding: 10px;
+      max-width: 300px;
+      z-index: 10;
+      user-select: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="oscilloscope"></canvas>
+  <div id="infoBox">
+    Визуализация звука дрона.<br>
+    Клик или тап для запуска/остановки.<br>
+    Линия — форма звуковой волны.<br>
+    Толщина и цвет линии можно менять в коде.
+  </div>
+
+  <script>
+    let audioCtx;
+    let isPlaying = false;
+    let interval;
+    let droneOsc;
+    let droneGain;
+    let analyser;
+    let dataArray;
+    let canvas = document.getElementById("oscilloscope");
+    let canvasCtx = canvas.getContext("2d");
+    let animationId;
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function draw() {
+      animationId = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(dataArray);
+
+      canvasCtx.fillStyle = "black";
+      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+      canvasCtx.lineWidth = 400;
+      canvasCtx.strokeStyle = "blue";
+
+      canvasCtx.beginPath();
+
+      let sliceWidth = canvas.width / dataArray.length;
+      let x = 0;
+
+      for (let i = 0; i < dataArray.length; i++) {
+        let v = dataArray[i] / 128.0;
+        let y = (v * canvas.height) / 2;
+
+        if (i === 0) {
+          canvasCtx.moveTo(x, y);
+        } else {
+          canvasCtx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+      }
+
+      canvasCtx.stroke();
+    }
+
+    function start() {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      droneOsc = audioCtx.createOscillator();
+      droneGain = audioCtx.createGain();
+
+      droneOsc.type = 'sine';
+      droneOsc.frequency.setValueAtTime(40, audioCtx.currentTime);
+      droneGain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+
+      droneOsc.connect(droneGain);
+      droneGain.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      droneOsc.start();
+
+      interval = setInterval(() => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        const freq = Math.random() * 200 + 20;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+        const volume = Math.random() * 0.05 + 0.01;
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+
+        osc.connect(gain);
+        gain.connect(analyser);
+
+        const duration = Math.random() * 4 + 4;
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      }, 4000);
+
+      draw();
+    }
+
+    function stop() {
+      clearInterval(interval);
+      if (droneOsc) droneOsc.stop();
+      if (audioCtx) audioCtx.close();
+      cancelAnimationFrame(animationId);
+      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function togglePlay() {
+      if (!isPlaying) {
+        isPlaying = true;
+        start();
+      } else {
+        isPlaying = false;
+        stop();
+      }
+    }
+
+    window.addEventListener('click', togglePlay);
+    window.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      togglePlay();
+    }, { passive: false });
+
+    window.addEventListener('load', () => {
+      const resume = () => {
+        if (!isPlaying) {
+          isPlaying = true;
+          start();
+        }
+        window.removeEventListener('click', resume);
+        window.removeEventListener('touchstart', resume);
+      };
+      window.addEventListener('click', resume);
+      window.addEventListener('touchstart', resume, { passive: false });
+    });
+  </script>
+</body>
+</html>
